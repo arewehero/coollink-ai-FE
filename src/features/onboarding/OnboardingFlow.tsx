@@ -30,6 +30,7 @@ import { OnboardingLayout } from "@/components/onboarding/OnboardingLayout";
 import { HomeEnvironmentStep } from "@/components/onboarding/HomeEnvironmentStep";
 import { LifestyleStep } from "@/components/onboarding/LifestyleStep";
 import { EnergyProfileStep } from "@/components/onboarding/EnergyProfileStep";
+import { useAuth } from "@/hooks/useAuth";
 
 const STEPS = [
   {
@@ -63,6 +64,7 @@ const defaultValues: DefaultValues<ProfileSchemaInput> = {
 
 export function OnboardingFlow() {
   const router = useRouter();
+  const auth = useAuth();
   const form = useForm<ProfileSchemaInput, unknown, ProfileSchemaOutput>({
     resolver: zodResolver(profileSchema),
     defaultValues,
@@ -111,6 +113,7 @@ export function OnboardingFlow() {
       setSubmitting(true);
       try {
         await api.saveProfile(data);
+        await auth.refetchMe();
         clearOnboardingDraft();
         // 명세서 §4.2: 저장 후 위치 설정으로 이동
         router.push("/location");

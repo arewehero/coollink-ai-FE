@@ -13,7 +13,7 @@ import { useForm } from "react-hook-form";
 import type { DefaultValues } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { api, isApiError } from "@/lib/api";
-import type { GenerateDailyPlanBody } from "@/types/api";
+import type { AuthenticatedUser, GenerateDailyPlanBody } from "@/types/api";
 import {
   profileSchema,
   type ProfileSchemaInput,
@@ -29,6 +29,7 @@ import { FormHelperText } from "@/components/form/FormHelperText";
 import { useToast } from "@/components/common/ToastProvider";
 import { getStoredLocation } from "@/lib/storage/location";
 import { getTodayKst } from "@/lib/format/date";
+import { useAuth } from "@/hooks/useAuth";
 
 type Section = "home" | "lifestyle" | "energy";
 
@@ -59,12 +60,27 @@ function parseSection(value: string | null): Section {
   return value === "lifestyle" || value === "energy" ? value : "home";
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function extractUserFromResponse(value: unknown): AuthenticatedUser | null {
+  if (!isRecord(value)) return null;
+  const nestedUser = value.user;
+  if (isRecord(nestedUser)) return nestedUser as AuthenticatedUser;
+  if ("email" in value || "name" in value || "profileImage" in value || "profile_image" in value) {
+    return value as AuthenticatedUser;
+  }
+  return null;
+}
+
 export function ProfileEditFlow() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const section = parseSection(searchParams.get("section"));
   const meta = SECTION_META[section];
   const { showToast } = useToast();
+  const auth = useAuth();
 
   const form = useForm<ProfileSchemaInput, unknown, ProfileSchemaOutput>({
     resolver: zodResolver(profileSchema),
@@ -108,14 +124,21 @@ export function ProfileEditFlow() {
     setSaving(true);
     try {
       const values = form.getValues();
+      let response: unknown;
       if (section === "home") {
-        await api.updateHomeEnvironment(values.home_environment);
+        response = await api.updateHomeEnvironment(values.home_environment);
       } else if (section === "lifestyle") {
-        await api.updateLifestyle(values.lifestyle);
+        response = await api.updateLifestyle(values.lifestyle);
       } else {
-        await api.updateEnergy(values.energy_profile);
+        response = await api.updateEnergy(values.energy_profile);
       }
-      showToast("저장했어요.", "success");
+      const updatedUser = extractUserFromResponse(response);
+      if (updatedUser) {
+        auth.setUser(updatedUser);
+      } else {
+        await auth.refetchMe();
+      }
+      showToast("저장되었습니다.", "success");
       if (meta.needsRegen) setRegenNeeded(true);
     } catch (error) {
       showToast(
